@@ -67,7 +67,8 @@ const Dashboard = () => {
             <Badge className={cn('text-xs', statusColorMap[status.color])}>{status.label}</Badge>
           </div>
           <Progress value={percentage} className="h-4" />
-          <div className="mt-2 flex justify-between text-sm text-muted-foreground">
+          <p className="mt-3 text-center text-base font-semibold text-primary">{percentage}% of daily protein goal achieved</p>
+          <div className="mt-1 flex justify-between text-sm text-muted-foreground">
             <span>{Math.round(totalProtein)}g consumed</span>
             <span>{Math.max(0, Math.round(goal - totalProtein))}g remaining</span>
           </div>
