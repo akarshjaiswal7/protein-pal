@@ -28,7 +28,7 @@ const Signup = () => {
     e.preventDefault();
     if (!validate()) return;
     toast.success('Account created successfully!');
-    navigate('/dashboard');
+    navigate('/onboarding');
   };
 
   const update = (field: string, value: string) => setForm(prev => ({ ...prev, [field]: value }));

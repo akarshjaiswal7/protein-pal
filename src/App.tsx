@@ -5,6 +5,8 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
+import Onboarding from "./pages/Onboarding";
+import MealPlanner from "./pages/MealPlanner";
 import Dashboard from "./pages/Dashboard";
 import AddIntake from "./pages/AddIntake";
 import FoodDatabase from "./pages/FoodDatabase";
@@ -24,6 +26,8 @@ const App = () => (
           <Route path="/" element={<Navigate to="/login" replace />} />
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
+          <Route path="/onboarding" element={<Onboarding />} />
+          <Route path="/meal-planner" element={<MealPlanner />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/add-intake" element={<AddIntake />} />
           <Route path="/food-database" element={<FoodDatabase />} />
