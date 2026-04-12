@@ -28,7 +28,8 @@ const Login = () => {
     e.preventDefault();
     if (!validate()) return;
     toast.success('Logged in successfully!');
-    navigate('/dashboard');
+    const onboarded = localStorage.getItem('onboardingComplete');
+    navigate(onboarded ? '/dashboard' : '/onboarding');
   };
 
   return (
