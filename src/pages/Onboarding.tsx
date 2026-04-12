@@ -211,6 +211,7 @@ const Onboarding = () => {
                   <Badge className={cn('text-xs', bmi.color === 'success' ? 'bg-success text-success-foreground' : bmi.color === 'warning' ? 'bg-warning text-warning-foreground' : 'bg-danger text-danger-foreground')}>{bmi.category}</Badge>
                 </div>
                 <p className="text-3xl font-bold text-foreground">{bmi.value}</p>
+                <p className="mt-2 text-sm text-muted-foreground italic">{bmi.message}</p>
               </div>
 
               <div className="mb-6 rounded-xl border-2 border-primary/20 bg-primary/5 p-5">

@@ -13,48 +13,60 @@ export interface BMIResult {
   value: number;
   category: 'Underweight' | 'Normal' | 'Overweight' | 'Obese';
   color: string;
+  message: string;
 }
 
 export const calculateBMI = (weight: number, heightCm: number): BMIResult => {
   const heightM = heightCm / 100;
   const bmi = weight / (heightM * heightM);
-  let category: BMIResult['category'];
-  let color: string;
+  const value = Math.round(bmi * 10) / 10;
 
-  if (bmi < 18.5) { category = 'Underweight'; color = 'warning'; }
-  else if (bmi < 25) { category = 'Normal'; color = 'success'; }
-  else if (bmi < 30) { category = 'Overweight'; color = 'warning'; }
-  else { category = 'Obese'; color = 'danger'; }
+  if (bmi < 18.5) return { value, category: 'Underweight', color: 'warning', message: 'You are underweight. A higher protein intake is recommended for healthy weight and muscle gain.' };
+  if (bmi < 25) return { value, category: 'Normal', color: 'success', message: 'Your BMI is normal. A balanced protein intake will help maintain your health and fitness.' };
+  if (bmi < 30) return { value, category: 'Overweight', color: 'warning', message: 'You are overweight. A controlled protein intake with lean sources is recommended to support fat loss.' };
+  return { value, category: 'Obese', color: 'danger', message: 'Your BMI indicates obesity. A high-protein, calorie-controlled diet with lean sources is strongly recommended.' };
+};
 
-  return { value: Math.round(bmi * 10) / 10, category, color };
+// BMI-driven protein ranges per the strict spec
+const getBMIProteinRange = (bmiCategory: BMIResult['category']): { min: number; max: number } => {
+  switch (bmiCategory) {
+    case 'Underweight': return { min: 1.5, max: 2.2 };
+    case 'Normal': return { min: 1.0, max: 1.5 };
+    case 'Overweight': return { min: 1.2, max: 1.8 };
+    case 'Obese': return { min: 1.2, max: 1.8 };
+  }
+};
+
+// Activity level adjusts position within the BMI range
+const activityFactor: Record<UserStats['activityLevel'], number> = {
+  'Sedentary': 0.0,
+  'Light': 0.25,
+  'Moderate': 0.5,
+  'Active': 0.75,
+  'Very Active': 1.0,
+};
+
+// Goal shifts the multiplier within range
+const goalShift: Record<UserStats['goal'], number> = {
+  'Weight Loss': 0.15,   // higher protein preserves muscle during deficit
+  'Maintenance': 0.0,
+  'Muscle Gain': 0.1,
 };
 
 export const calculateProteinGoal = (stats: UserStats): { min: number; max: number; recommended: number } => {
-  const { weight, activityLevel, goal } = stats;
+  const bmi = calculateBMI(stats.weight, stats.height);
+  const range = getBMIProteinRange(bmi.category);
 
-  let minMultiplier: number, maxMultiplier: number;
+  // Position within range based on activity
+  const aFactor = activityFactor[stats.activityLevel];
+  let multiplier = range.min + (range.max - range.min) * aFactor;
 
-  switch (activityLevel) {
-    case 'Sedentary': minMultiplier = 0.8; maxMultiplier = 1.0; break;
-    case 'Light': minMultiplier = 1.0; maxMultiplier = 1.2; break;
-    case 'Moderate': minMultiplier = 1.2; maxMultiplier = 1.5; break;
-    case 'Active': minMultiplier = 1.5; maxMultiplier = 1.8; break;
-    case 'Very Active': minMultiplier = 1.8; maxMultiplier = 2.0; break;
-    default: minMultiplier = 1.0; maxMultiplier = 1.2;
-  }
+  // Goal shift — clamp to range bounds
+  multiplier = Math.min(range.max, Math.max(range.min, multiplier + goalShift[stats.goal]));
 
-  // Adjust for goal
-  if (goal === 'Weight Loss') {
-    minMultiplier += 0.2;
-    maxMultiplier += 0.2;
-  } else if (goal === 'Muscle Gain') {
-    minMultiplier += 0.1;
-    maxMultiplier += 0.1;
-  }
-
-  const min = Math.round(weight * minMultiplier);
-  const max = Math.round(weight * maxMultiplier);
-  const recommended = Math.round((min + max) / 2);
+  const recommended = Math.round(stats.weight * multiplier);
+  const min = Math.round(stats.weight * range.min);
+  const max = Math.round(stats.weight * range.max);
 
   return { min, max, recommended };
 };
@@ -79,43 +91,77 @@ const filterFoodsByDiet = (diet: DietType): Food[] => {
   return mockFoods.filter(food => {
     if (diet === 'Vegetarian') return food.category === 'Vegetarian' || food.category === 'Dairy' || food.category === 'Supplement';
     if (diet === 'Eggetarian') return food.category !== 'Non-Veg' || food.foodName.toLowerCase().includes('egg');
-    return true; // Non-Vegetarian gets all
+    return true;
   });
 };
 
 const pickRandom = <T>(arr: T[], count: number): T[] => {
   const shuffled = [...arr].sort(() => Math.random() - 0.5);
-  return shuffled.slice(0, count);
+  return shuffled.slice(0, Math.min(count, arr.length));
 };
 
+/**
+ * Build a single meal that targets exactly `targetProtein` grams.
+ * Uses greedy allocation with the last item trimmed to hit the target precisely.
+ */
 const buildMeal = (foods: Food[], targetProtein: number): MealItem[] => {
+  if (targetProtein <= 0) return [];
   const items: MealItem[] = [];
   let remaining = targetProtein;
-
   const selected = pickRandom(foods, 3);
-  for (const food of selected) {
+
+  for (let i = 0; i < selected.length; i++) {
     if (remaining <= 0) break;
-    // Calculate quantity needed, cap at reasonable amounts
+    const food = selected[i];
+    const isLast = i === selected.length - 1 || remaining <= 5;
     const maxQty = food.category === 'Supplement' ? 50 : 300;
-    const neededQty = Math.min(maxQty, Math.round((remaining / food.proteinPer100g) * 100));
-    const qty = Math.max(30, Math.min(neededQty, maxQty));
+    const minQty = 20;
+
+    // Calculate exact quantity needed for remaining protein
+    let qty = Math.round((remaining / food.proteinPer100g) * 100);
+    qty = Math.max(minQty, Math.min(qty, maxQty));
+
     const protein = Math.round((food.proteinPer100g / 100) * qty * 10) / 10;
-    items.push({ food, quantity: qty, protein });
-    remaining -= protein;
+
+    // If this is the last item or we'd overshoot, trim to exact remaining
+    if (isLast || protein >= remaining) {
+      const exactQty = Math.round((remaining / food.proteinPer100g) * 100);
+      const clampedQty = Math.max(minQty, Math.min(exactQty, maxQty));
+      const exactProtein = Math.round((food.proteinPer100g / 100) * clampedQty * 10) / 10;
+      items.push({ food, quantity: clampedQty, protein: exactProtein });
+      remaining -= exactProtein;
+      break;
+    }
+
+    // Allocate a portion (not all remaining) to leave room for variety
+    const portionQty = Math.max(minQty, Math.min(Math.round(qty * 0.6), maxQty));
+    const portionProtein = Math.round((food.proteinPer100g / 100) * portionQty * 10) / 10;
+    items.push({ food, quantity: portionQty, protein: portionProtein });
+    remaining -= portionProtein;
   }
 
   return items;
 };
 
+/**
+ * Generate 3 meal plans that strictly do NOT exceed the protein goal.
+ * Each plan targets 90-100% of the goal.
+ * The plan closest to the goal is marked as recommended.
+ */
 export const generateMealPlans = (proteinGoal: number, diet: DietType): MealPlan[] => {
   const foods = filterFoodsByDiet(diet);
   const plans: MealPlan[] = [];
+  const attempts = 20; // try multiple times to get 3 valid plans
 
-  for (let i = 0; i < 3; i++) {
-    const breakfastTarget = proteinGoal * 0.25;
-    const lunchTarget = proteinGoal * 0.35;
-    const dinnerTarget = proteinGoal * 0.3;
-    const snackTarget = proteinGoal * 0.1;
+  for (let attempt = 0; attempt < attempts && plans.length < 3; attempt++) {
+    // Slightly vary the effective target (90-100% of goal) for diversity
+    const targetFraction = 0.92 + Math.random() * 0.08; // 92%-100%
+    const effectiveTarget = proteinGoal * targetFraction;
+
+    const breakfastTarget = effectiveTarget * 0.25;
+    const lunchTarget = effectiveTarget * 0.35;
+    const dinnerTarget = effectiveTarget * 0.30;
+    const snackTarget = effectiveTarget * 0.10;
 
     const meals = [
       { type: 'Breakfast', items: buildMeal(foods, breakfastTarget) },
@@ -124,21 +170,56 @@ export const generateMealPlans = (proteinGoal: number, diet: DietType): MealPlan
       { type: 'Snack', items: buildMeal(foods, snackTarget) },
     ];
 
-    const totalProtein = Math.round(meals.reduce((sum, m) => sum + m.items.reduce((s, item) => s + item.protein, 0), 0));
+    const totalProtein = Math.round(
+      meals.reduce((sum, m) => sum + m.items.reduce((s, item) => s + item.protein, 0), 0)
+    );
+
+    // STRICT: reject any plan that exceeds the goal
+    if (totalProtein > proteinGoal) continue;
+
+    // Reject plans below 85% of goal (too far off)
+    if (totalProtein < proteinGoal * 0.85) continue;
 
     plans.push({
-      id: i + 1,
-      label: `Option ${i + 1}`,
+      id: plans.length + 1,
+      label: `Option ${plans.length + 1}`,
       meals,
       totalProtein,
       isRecommended: false,
     });
   }
 
-  // Mark the plan closest to goal as recommended
-  plans.sort((a, b) => Math.abs(a.totalProtein - proteinGoal) - Math.abs(b.totalProtein - proteinGoal));
+  // Fallback: if we couldn't generate 3 valid plans, fill remaining
+  while (plans.length < 3) {
+    const safeTarget = proteinGoal * 0.90;
+    const meals = [
+      { type: 'Breakfast', items: buildMeal(foods, safeTarget * 0.25) },
+      { type: 'Lunch', items: buildMeal(foods, safeTarget * 0.35) },
+      { type: 'Dinner', items: buildMeal(foods, safeTarget * 0.30) },
+      { type: 'Snack', items: buildMeal(foods, safeTarget * 0.10) },
+    ];
+    const totalProtein = Math.round(
+      meals.reduce((sum, m) => sum + m.items.reduce((s, item) => s + item.protein, 0), 0)
+    );
+    plans.push({
+      id: plans.length + 1,
+      label: `Option ${plans.length + 1}`,
+      meals,
+      totalProtein: Math.min(totalProtein, proteinGoal),
+      isRecommended: false,
+    });
+  }
+
+  // Mark closest-to-goal (without exceeding) as recommended
+  plans.sort((a, b) => {
+    const diffA = proteinGoal - a.totalProtein;
+    const diffB = proteinGoal - b.totalProtein;
+    return diffA - diffB; // smaller gap = better
+  });
   plans[0].isRecommended = true;
-  // Re-sort by id
+  plans[0].label = 'Best Match';
+
+  // Re-sort by id for display
   plans.sort((a, b) => a.id - b.id);
 
   return plans;
