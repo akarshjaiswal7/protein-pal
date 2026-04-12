@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Plus, Database, BarChart3, User, Menu, X, Dumbbell } from 'lucide-react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { LayoutDashboard, Plus, Database, BarChart3, User, Menu, X, Dumbbell, LogOut, RotateCcw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
+import { toast } from 'sonner';
 
 const navItems = [
   { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -14,7 +15,26 @@ const navItems = [
 
 const AppNavbar = () => {
   const location = useLocation();
+  const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  const handleLogout = () => {
+    localStorage.removeItem('onboardingComplete');
+    localStorage.removeItem('proteinGoal');
+    localStorage.removeItem('userStats');
+    localStorage.removeItem('savedMealPlan');
+    toast.success('Logged out successfully');
+    navigate('/login');
+  };
+
+  const handleRestartOnboarding = () => {
+    localStorage.removeItem('onboardingComplete');
+    localStorage.removeItem('proteinGoal');
+    localStorage.removeItem('userStats');
+    localStorage.removeItem('savedMealPlan');
+    toast.info('Restarting onboarding...');
+    navigate('/onboarding');
+  };
 
   return (
     <>
@@ -53,6 +73,14 @@ const AppNavbar = () => {
                 </Link>
               );
             })}
+            <div className="ml-2 flex items-center gap-1 border-l pl-2">
+              <button onClick={handleRestartOnboarding} className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors" title="Restart Onboarding">
+                <RotateCcw className="h-4 w-4" /> Restart Setup
+              </button>
+              <button onClick={handleLogout} className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-destructive hover:bg-destructive/10 transition-colors" title="Logout">
+                <LogOut className="h-4 w-4" /> Logout
+              </button>
+            </div>
           </div>
 
           {/* Mobile toggle */}
@@ -91,6 +119,14 @@ const AppNavbar = () => {
                 </Link>
               );
             })}
+            <div className="mt-2 border-t pt-2 space-y-1">
+              <button onClick={() => { setMobileOpen(false); handleRestartOnboarding(); }} className="flex w-full items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
+                <RotateCcw className="h-5 w-5" /> Restart Setup
+              </button>
+              <button onClick={() => { setMobileOpen(false); handleLogout(); }} className="flex w-full items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium text-destructive hover:bg-destructive/10 transition-colors">
+                <LogOut className="h-5 w-5" /> Logout
+              </button>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
