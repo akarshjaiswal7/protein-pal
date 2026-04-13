@@ -1,12 +1,15 @@
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Utensils, Star, RefreshCw, ChevronRight, Salad, Beef, Egg, Check, ArrowRight, ChevronLeft } from 'lucide-react';
+import { Utensils, Star, RefreshCw, ChevronRight, Salad, Beef, Egg, Check, ArrowRight, ChevronLeft, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
-import { generateMealPlans, DietType, MealPlan } from '@/lib/protein-calculator';
+import { apiFetch } from '@/lib/api';
+import { toast } from 'sonner';
+
+type DietType = 'Vegetarian' | 'Non-Vegetarian' | 'Eggetarian';
 
 const diets: { value: DietType; label: string; icon: React.ElementType; desc: string }[] = [
   { value: 'Vegetarian', label: 'Vegetarian', icon: Salad, desc: 'Plant-based + dairy' },
@@ -18,35 +21,38 @@ const MealPlanner = () => {
   const navigate = useNavigate();
   const [wantHelp, setWantHelp] = useState<boolean | null>(null);
   const [diet, setDiet] = useState<DietType | null>(null);
-  const [plans, setPlans] = useState<MealPlan[] | null>(null);
+  const [plans, setPlans] = useState<any[] | null>(null);
   const [selectedPlan, setSelectedPlan] = useState<number | null>(null);
-  const [step, setStep] = useState(0); // 0=ask, 1=diet, 2=plans
+  const [step, setStep] = useState(0); 
+  const [loading, setLoading] = useState(false);
 
   const proteinGoal = Number(localStorage.getItem('proteinGoal') || '120');
 
-  const handleGenerate = () => {
+  const fetchPlans = async () => {
     if (!diet) return;
-    const generated = generateMealPlans(proteinGoal, diet);
-    setPlans(generated);
-    setStep(2);
+    setLoading(true);
+    try {
+      const data = await apiFetch('/calculator/generate-meal-plan', {
+        method: 'POST',
+        body: JSON.stringify({ proteinGoal, dietType: diet })
+      });
+      setPlans(data);
+      setStep(2);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to generate meal plan');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleRegenerate = () => {
-    if (!diet) return;
-    setPlans(generateMealPlans(proteinGoal, diet));
-    setSelectedPlan(null);
-  };
+  const handleGenerate = () => fetchPlans();
+  const handleRegenerate = () => fetchPlans();
 
   const handleSave = () => {
-    if (selectedPlan !== null && plans) {
-      localStorage.setItem('savedMealPlan', JSON.stringify(plans[selectedPlan]));
-    }
     navigate('/dashboard');
   };
 
-  const handleSkip = () => {
-    navigate('/dashboard');
-  };
+  const handleSkip = () => navigate('/dashboard');
 
   const progressValue = step === 0 ? 33 : step === 1 ? 66 : 100;
 
@@ -62,7 +68,6 @@ const MealPlanner = () => {
         </div>
 
         <AnimatePresence mode="wait">
-          {/* Step 0: Ask */}
           {step === 0 && (
             <motion.div key="ask" initial={{ x: 60, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -60, opacity: 0 }} className="rounded-2xl border bg-card p-8 shadow-lg">
               <div className="mb-8 flex flex-col items-center text-center">
@@ -85,7 +90,6 @@ const MealPlanner = () => {
             </motion.div>
           )}
 
-          {/* Step 1: Diet */}
           {step === 1 && (
             <motion.div key="diet" initial={{ x: 60, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -60, opacity: 0 }} className="rounded-2xl border bg-card p-8 shadow-lg">
               <button onClick={() => setStep(0)} className="mb-4 flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"><ChevronLeft className="h-4 w-4" /> Back</button>
@@ -105,13 +109,13 @@ const MealPlanner = () => {
                   </button>
                 ))}
               </div>
-              <Button onClick={handleGenerate} className="w-full" disabled={!diet}>
-                Generate Meal Plans <ChevronRight className="ml-2 h-4 w-4" />
+              <Button onClick={handleGenerate} className="w-full" disabled={!diet || loading}>
+                {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                {loading ? 'Generating...' : 'Generate Meal Plans'} <ChevronRight className="ml-2 h-4 w-4" />
               </Button>
             </motion.div>
           )}
 
-          {/* Step 2: Plans */}
           {step === 2 && plans && (
             <motion.div key="plans" initial={{ x: 60, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -60, opacity: 0 }} className="rounded-2xl border bg-card p-8 shadow-lg">
               <button onClick={() => setStep(1)} className="mb-4 flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"><ChevronLeft className="h-4 w-4" /> Back</button>
@@ -120,32 +124,27 @@ const MealPlanner = () => {
                   <h2 className="text-xl font-bold text-foreground">Your Meal Plans</h2>
                   <p className="text-sm text-muted-foreground">Target: {proteinGoal}g protein/day</p>
                 </div>
-                <Button variant="outline" size="sm" onClick={handleRegenerate}>
-                  <RefreshCw className="mr-2 h-4 w-4" /> Regenerate
+                <Button variant="outline" size="sm" onClick={handleRegenerate} disabled={loading}>
+                  {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />} Regenerate
                 </Button>
               </div>
 
               <div className="space-y-4 mb-6">
                 {plans.map((plan, idx) => (
-                  <button key={plan.id} onClick={() => setSelectedPlan(idx)} className={cn('w-full rounded-xl border-2 p-5 text-left transition-all', selectedPlan === idx ? 'border-primary bg-primary/5 shadow-md' : 'border-border hover:border-primary/30', plan.isRecommended && selectedPlan !== idx && 'border-primary/40')}>
+                  <button key={idx} onClick={() => setSelectedPlan(idx)} className={cn('w-full rounded-xl border-2 p-5 text-left transition-all', selectedPlan === idx ? 'border-primary bg-primary/5 shadow-md' : 'border-border hover:border-primary/30', plan.recommended && selectedPlan !== idx && 'border-primary/40')}>
                     <div className="flex items-center justify-between mb-3">
                       <div className="flex items-center gap-2">
-                        <span className="font-bold text-foreground">{plan.label}</span>
-                        {plan.isRecommended && <Badge className="bg-primary text-primary-foreground text-xs"><Star className="mr-1 h-3 w-3" />Recommended</Badge>}
+                        <span className="font-bold text-foreground">Option {plan.option}</span>
+                        {plan.recommended && <Badge className="bg-primary text-primary-foreground text-xs"><Star className="mr-1 h-3 w-3" />Recommended</Badge>}
                       </div>
-                      <span className="text-lg font-bold text-primary">{plan.totalProtein}g</span>
+                      <span className="text-lg font-bold text-primary">{Math.round(plan.totalProtein)}g</span>
                     </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      {plan.meals.map(meal => (
-                        <div key={meal.type} className="rounded-lg bg-muted/50 p-3">
-                          <p className="text-xs font-semibold text-muted-foreground mb-1">{meal.type}</p>
-                          {meal.items.map((item, i) => (
-                            <p key={i} className="text-xs text-foreground">{item.food.foodName} ({item.quantity}g) — <span className="text-primary font-medium">{item.protein}g</span></p>
-                          ))}
-                        </div>
+                    <div className="rounded-lg bg-muted/50 p-3">
+                      <p className="text-xs font-semibold text-muted-foreground mb-1">Suggested Foods</p>
+                      {plan.foods.map((item: any, i: number) => (
+                        <p key={i} className="text-xs text-foreground">{item.foodName} ({item.quantity}g) — <span className="text-primary font-medium">{Math.round(item.protein)}g</span></p>
                       ))}
                     </div>
-                    {/* Goal proximity */}
                     <div className="mt-3">
                       <div className="flex justify-between text-xs text-muted-foreground mb-1">
                         <span>{Math.round((plan.totalProtein / proteinGoal) * 100)}% of goal</span>

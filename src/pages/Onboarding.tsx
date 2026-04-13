@@ -1,14 +1,17 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Dumbbell, User, Target, ChevronRight, ChevronLeft, Sparkles, Check, ArrowRight } from 'lucide-react';
+import { Dumbbell, User, Target, ChevronRight, ChevronLeft, Sparkles, Check, ArrowRight, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import { calculateBMI, calculateProteinGoal, UserStats, BMIResult } from '@/lib/protein-calculator';
+import { UserStats, BMIResult } from '@/lib/protein-calculator';
+import { apiFetch } from '@/lib/api';
+import { toast } from 'sonner';
+import { useAuth } from '@/context/AuthContext';
 
 const activityLevels = ['Sedentary', 'Light', 'Moderate', 'Active', 'Very Active'] as const;
 const goals = ['Weight Loss', 'Maintenance', 'Muscle Gain'] as const;
@@ -18,8 +21,11 @@ const TOTAL_STEPS = 4;
 
 const Onboarding = () => {
   const navigate = useNavigate();
+  const { userId } = useAuth();
   const [userType, setUserType] = useState<'new' | 'existing' | null>(null);
   const [step, setStep] = useState(0);
+  const [loading, setLoading] = useState(false);
+  
   const [stats, setStats] = useState<UserStats>({
     age: 25, gender: 'Male', height: 170, weight: 70,
     activityLevel: 'Moderate', goal: 'Maintenance',
@@ -34,28 +40,83 @@ const Onboarding = () => {
     setStep(type === 'new' ? 1 : -1);
   };
 
-  const handleCalculate = () => {
-    const bmiResult = calculateBMI(stats.weight, stats.height);
-    setBmi(bmiResult);
-    const goalResult = calculateProteinGoal(stats);
-    setProteinGoal(goalResult);
-    setCustomGoal(String(goalResult.recommended));
-    setStep(3);
+  const handleCalculate = async () => {
+    setLoading(true);
+    try {
+      const activityMap: Record<string, number> = {
+        'Sedentary': 1, 'Light': 2, 'Moderate': 3, 'Active': 4, 'Very Active': 5
+      };
+
+      const res = await apiFetch('/calculator/calculate-goal', {
+        method: 'POST',
+        body: JSON.stringify({
+          weight: stats.weight,
+          height: stats.height,
+          age: stats.age,
+          gender: stats.gender,
+          activityID: activityMap[stats.activityLevel] || 3,
+          goal: stats.goal,
+        })
+      });
+
+      // Map backend response back to BMIResult structure
+      setBmi({
+        value: typeof res.bmi === 'number' ? res.bmi.toFixed(1) : res.bmi,
+        category: res.category || 'Unknown',
+        message: 'Calculated using BMI guidelines',
+        color: (res.category || '').includes('Normal') ? 'success' : ((res.category || '').includes('Overweight') || (res.category || '').includes('Underweight')) ? 'warning' : 'danger'
+      });
+
+      const rec = Math.round(res.suggestedProtein || 120);
+      setProteinGoal({ recommended: rec, min: Math.round(rec * 0.9), max: Math.round(rec * 1.1) });
+      setCustomGoal(String(rec));
+      setStep(3);
+    } catch (err: any) {
+      toast.error(err.message || 'Calculation failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const saveGoalToBackend = async (goal: number) => {
+    setLoading(true);
+    try {
+      const activityMap: Record<string, number> = {
+        'Sedentary': 1, 'Light': 2, 'Moderate': 3, 'Active': 4, 'Very Active': 5
+      };
+
+      await apiFetch('/user/update', {
+        method: 'PUT',
+        body: JSON.stringify({
+          userId,
+          age: stats.age,
+          weight: stats.weight,
+          gender: stats.gender,
+          activityID: activityMap[stats.activityLevel] || 3,
+          proteinGoalPerDay: goal,
+        })
+      });
+
+      localStorage.setItem('proteinGoal', String(goal));
+      toast.success('Goal saved!');
+      navigate('/meal-planner');
+    } catch (err: any) {
+      toast.error('Failed to save goal to profile. Continuing anyway.');
+      localStorage.setItem('proteinGoal', String(goal));
+      navigate('/meal-planner');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleAcceptGoal = () => {
     const goal = userType === 'existing' ? Number(existingGoal) : Number(customGoal);
-    localStorage.setItem('proteinGoal', String(goal));
-    localStorage.setItem('onboardingComplete', 'true');
-    localStorage.setItem('userStats', JSON.stringify(stats));
-    navigate('/meal-planner');
+    saveGoalToBackend(goal);
   };
 
   const handleExistingSubmit = () => {
     if (!existingGoal || Number(existingGoal) <= 0) return;
-    localStorage.setItem('proteinGoal', existingGoal);
-    localStorage.setItem('onboardingComplete', 'true');
-    navigate('/meal-planner');
+    saveGoalToBackend(Number(existingGoal));
   };
 
   const progressValue = userType === 'new' ? (step / TOTAL_STEPS) * 100 : 50;
@@ -123,8 +184,8 @@ const Onboarding = () => {
                   <Label htmlFor="goal">Daily Protein Goal (grams)</Label>
                   <Input id="goal" type="number" placeholder="e.g. 120" value={existingGoal} onChange={e => setExistingGoal(e.target.value)} className="mt-1 text-center text-2xl font-bold h-14" />
                 </div>
-                <Button onClick={handleExistingSubmit} className="w-full" disabled={!existingGoal || Number(existingGoal) <= 0}>
-                  Continue <ArrowRight className="ml-2 h-4 w-4" />
+                <Button onClick={handleExistingSubmit} className="w-full" disabled={!existingGoal || Number(existingGoal) <= 0 || loading}>
+                  {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Continue <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
               </div>
             </motion.div>
@@ -142,13 +203,13 @@ const Onboarding = () => {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label>Age</Label>
-                    <Input type="number" value={stats.age} onChange={e => setStats(s => ({ ...s, age: +e.target.value }))} className="mt-1" />
+                    <Input type="number" value={stats.age} onChange={e => setStats(s => ({ ...s, age: e.target.value === '' ? '' : +e.target.value }))} className="mt-1" />
                   </div>
                   <div>
                     <Label>Gender</Label>
                     <div className="mt-1 flex gap-2">
                       {genders.map(g => (
-                        <button key={g} onClick={() => setStats(s => ({ ...s, gender: g }))} className={cn('flex-1 rounded-lg border px-2 py-2 text-xs font-medium transition-all', stats.gender === g ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:border-primary/50')}>{g}</button>
+                        <button key={g} onClick={() => setStats(s => ({ ...s, gender: g as any }))} className={cn('flex-1 rounded-lg border px-2 py-2 text-xs font-medium transition-all', stats.gender === g ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:border-primary/50')}>{g}</button>
                       ))}
                     </div>
                   </div>
@@ -156,11 +217,11 @@ const Onboarding = () => {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label>Height (cm)</Label>
-                    <Input type="number" value={stats.height} onChange={e => setStats(s => ({ ...s, height: +e.target.value }))} className="mt-1" />
+                    <Input type="number" value={stats.height} onChange={e => setStats(s => ({ ...s, height: e.target.value === '' ? '' : +e.target.value }))} className="mt-1" />
                   </div>
                   <div>
                     <Label>Weight (kg)</Label>
-                    <Input type="number" value={stats.weight} onChange={e => setStats(s => ({ ...s, weight: +e.target.value }))} className="mt-1" />
+                    <Input type="number" value={stats.weight} onChange={e => setStats(s => ({ ...s, weight: e.target.value === '' ? '' : +e.target.value }))} className="mt-1" />
                   </div>
                 </div>
                 <Button onClick={() => setStep(2)} className="w-full">Continue <ChevronRight className="ml-2 h-4 w-4" /></Button>
@@ -180,7 +241,7 @@ const Onboarding = () => {
                   <Label className="mb-2 block">Activity Level</Label>
                   <div className="flex flex-wrap gap-2">
                     {activityLevels.map(level => (
-                      <button key={level} onClick={() => setStats(s => ({ ...s, activityLevel: level }))} className={cn('rounded-lg border px-3 py-2 text-sm font-medium transition-all', stats.activityLevel === level ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:border-primary/50')}>{level}</button>
+                      <button key={level} onClick={() => setStats(s => ({ ...s, activityLevel: level as any }))} className={cn('rounded-lg border px-3 py-2 text-sm font-medium transition-all', stats.activityLevel === level ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:border-primary/50')}>{level}</button>
                     ))}
                   </div>
                 </div>
@@ -188,11 +249,13 @@ const Onboarding = () => {
                   <Label className="mb-2 block">Goal</Label>
                   <div className="grid grid-cols-3 gap-2">
                     {goals.map(g => (
-                      <button key={g} onClick={() => setStats(s => ({ ...s, goal: g }))} className={cn('rounded-lg border px-3 py-3 text-sm font-medium transition-all text-center', stats.goal === g ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:border-primary/50')}>{g}</button>
+                      <button key={g} onClick={() => setStats(s => ({ ...s, goal: g as any }))} className={cn('rounded-lg border px-3 py-3 text-sm font-medium transition-all text-center', stats.goal === g ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:border-primary/50')}>{g}</button>
                     ))}
                   </div>
                 </div>
-                <Button onClick={handleCalculate} className="w-full">Calculate My Goal <Sparkles className="ml-2 h-4 w-4" /></Button>
+                <Button onClick={handleCalculate} className="w-full" disabled={loading}>
+                   {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Calculate My Goal <Sparkles className="ml-2 h-4 w-4" />
+                </Button>
               </div>
             </motion.div>
           )}
@@ -226,10 +289,10 @@ const Onboarding = () => {
               </div>
 
               <div className="grid grid-cols-2 gap-3">
-                <Button onClick={handleAcceptGoal} className="w-full">
-                  <Check className="mr-2 h-4 w-4" /> Accept Goal
+                <Button onClick={handleAcceptGoal} className="w-full" disabled={loading}>
+                  {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />} Accept Goal
                 </Button>
-                <Button variant="outline" onClick={() => setStep(2)}>Adjust Stats</Button>
+                <Button variant="outline" onClick={() => setStep(2)} disabled={loading}>Adjust Stats</Button>
               </div>
             </motion.div>
           )}
