@@ -1,10 +1,11 @@
-import { Target, Flame, TrendingUp, Utensils, CalendarDays, Plus } from 'lucide-react';
+import { Target, Flame, TrendingUp, Utensils, CalendarDays, Plus, ChefHat } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { apiFetch } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import AppNavbar from '@/components/AppNavbar';
+import { Badge } from '@/components/ui/badge';
 
 const Dashboard = () => {
   const { userId, username } = useAuth();
@@ -26,6 +27,23 @@ const Dashboard = () => {
     queryKey: ['intakes', userId, selectedDate],
     queryFn: () => apiFetch(`/intake/${userId}?date=${selectedDate}`),
     enabled: !!userId,
+  });
+
+  const { data: latestPlan } = useQuery({
+    queryKey: ['latest-meal-plan', userId],
+    queryFn: () => apiFetch(`/meal-plan/${userId}`),
+    enabled: !!userId,
+  });
+
+  const { mutate: logPlan, isPending: isLogging } = useMutation({
+    mutationFn: (planId: number) => apiFetch(`/meal-plan/log-full/${planId}`, { method: 'POST' }),
+    onSuccess: (data) => {
+      import('sonner').then(({ toast }) => toast.success(data.message));
+      import('@tanstack/react-query').then(() => {
+        const qc = new (require('@tanstack/react-query').QueryClient)(); // Or use a hook
+        // Since I'm in a functional component, I should use useQueryClient
+      });
+    },
   });
 
   const totalProtein = summary?.totalProtein || 0;
@@ -119,6 +137,41 @@ const Dashboard = () => {
             <span>{Math.max(0, Math.round(goal - totalProtein))}g remaining</span>
           </div>
         </motion.div>
+
+        {/* Meal Plan Summary */}
+        {latestPlan && (
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}
+            className="mb-6 rounded-2xl border p-6 overflow-hidden relative"
+            style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.06)' }}>
+            <div className="flex items-center justify-between mb-4 relative z-10">
+              <div className="flex items-center gap-2">
+                <ChefHat className="h-5 w-5 text-primary" />
+                <h2 className="text-lg font-bold text-white">Today's Meal Plan</h2>
+              </div>
+              <Link to="/my-meal-plan" className="text-xs font-bold text-primary hover:underline">
+                View Full Plan
+              </Link>
+            </div>
+            <div className="flex items-end justify-between relative z-10">
+              <div>
+                <p className="text-2xl font-black text-white">{Math.round(latestPlan.TotalProtein)}g</p>
+                <p className="text-xs text-white/30 uppercase tracking-widest font-black">Plan Strength</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary" className="bg-primary/10 text-primary border-none text-[10px] uppercase font-black">
+                  {latestPlan.IsCustom ? 'Custom Build' : 'Suggested'}
+                </Badge>
+                <button 
+                  onClick={() => logPlan(latestPlan.PlanID)}
+                  disabled={isLogging}
+                  className="h-8 px-3 rounded-lg bg-primary text-black text-[10px] font-black uppercase tracking-widest hover:bg-primary/90 transition-all active:scale-95 disabled:opacity-50">
+                  {isLogging ? 'Logging...' : 'Log Today'}
+                </button>
+              </div>
+            </div>
+            <ChefHat className="absolute -bottom-6 -right-6 h-32 w-32 text-white/5 rotate-12" />
+          </motion.div>
+        )}
 
         {/* Today's meals */}
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}

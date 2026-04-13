@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
 import { apiFetch } from '@/lib/api';
+import { useAuth } from '@/context/AuthContext';
 import { toast } from 'sonner';
 
 type DietType = 'Vegetarian' | 'Non-Vegetarian' | 'Eggetarian';
@@ -18,6 +19,7 @@ const diets: { value: DietType; label: string; icon: React.ElementType; desc: st
 ];
 
 const MealPlanner = () => {
+  const { userId } = useAuth();
   const navigate = useNavigate();
   const [wantHelp, setWantHelp] = useState<boolean | null>(null);
   const [diet, setDiet] = useState<DietType | null>(null);
@@ -48,8 +50,29 @@ const MealPlanner = () => {
   const handleGenerate = () => fetchPlans();
   const handleRegenerate = () => fetchPlans();
 
-  const handleSave = () => {
-    navigate('/dashboard');
+  const handleSave = async () => {
+    if (selectedPlan === null || !plans) return;
+    const plan = plans[selectedPlan];
+    
+    setLoading(true);
+    try {
+      await apiFetch('/meal-plan/save', {
+        method: 'POST',
+        body: JSON.stringify({
+          userId,
+          planData: plan.foods,
+          totalProtein: plan.totalProtein,
+          isCustom: false
+        })
+      });
+      localStorage.setItem('onboardingComplete', 'true');
+      toast.success('Your meal plan has been saved!');
+      navigate('/dashboard');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to save your meal plan');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleSkip = () => navigate('/dashboard');

@@ -29,6 +29,7 @@ app.use('/api/analytics', analyticsRoutes);
 app.use('/api/admin', require('./routes/adminRoutes'));
 app.use('/api/nutritionist', require('./routes/nutritionistRoutes'));
 app.use('/api/notes', require('./routes/notesRoutes'));
+app.use('/api/meal-plan', require('./routes/mealPlanRoutes'));
 
 // Global Error Handler
 app.use((err, req, res, next) => {

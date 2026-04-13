@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Plus, Database, BarChart3, User, Menu, X, Dumbbell, LogOut, RotateCcw, Shield, Stethoscope, Mail } from 'lucide-react';
+import { LayoutDashboard, Plus, Database, BarChart3, User, Menu, X, Dumbbell, LogOut, RotateCcw, Shield, Stethoscope, Mail, ChefHat } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
@@ -10,6 +10,7 @@ const userNavItems = [
   { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { path: '/add-intake', label: 'Add Intake', icon: Plus },
   { path: '/food-database', label: 'Food DB', icon: Database },
+  { path: '/my-meal-plan', label: 'My Meal Plan', icon: ChefHat },
   { path: '/analytics', label: 'Analytics', icon: BarChart3 },
   { path: '/inbox', label: 'Inbox', icon: Mail },
   { path: '/profile', label: 'Profile', icon: User },

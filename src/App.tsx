@@ -18,6 +18,7 @@ import Landing from "./pages/Landing";
 import AdminDashboard from "./pages/AdminDashboard";
 import NutritionistDashboard from "./pages/NutritionistDashboard";
 import Inbox from "./pages/Inbox";
+import MyMealPlan from "./pages/MyMealPlan";
 
 const queryClient = new QueryClient();
 
@@ -48,6 +49,7 @@ const App = () => (
             <Route path="/admin" element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>} />
             <Route path="/nutritionist" element={<ProtectedRoute><NutritionistDashboard /></ProtectedRoute>} />
             <Route path="/inbox" element={<ProtectedRoute><Inbox /></ProtectedRoute>} />
+            <Route path="/my-meal-plan" element={<ProtectedRoute><MyMealPlan /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
