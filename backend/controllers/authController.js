@@ -1,11 +1,14 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const db = require('../db');
+const logger = require('../utils/logger');
 
+// ─── SIGNUP ──────────────────────────────────────────────────────────────────
 exports.signup = async (req, res) => {
-  try {
-    const { username, email, password, age, weight, gender, activityID, proteinGoalPerDay } = req.body;
+  const { username, email, password, age, weight, gender, activityID, proteinGoalPerDay } = req.body;
+  logger.info(`New signup attempt: ${username} (${email})`);
 
+  try {
     if (!username || !email || !password) {
       return res.status(400).json({ error: 'Username, email, and password are required' });
     }
@@ -13,7 +16,8 @@ exports.signup = async (req, res) => {
     // Check if user already exists
     const [existing] = await db.query('SELECT * FROM user_final WHERE Email = ? OR Username = ?', [email, username]);
     if (existing.length > 0) {
-      return res.status(400).json({ error: 'User with this email or username already exists' });
+      logger.warn(`Signup blocked: User already exists with email/username: ${email}/${username}`);
+      return res.status(400).json({ error: 'A profile with this email or username already exists' });
     }
 
     const salt = await bcrypt.genSalt(10);
@@ -25,31 +29,36 @@ exports.signup = async (req, res) => {
       [username, email, passwordHash, age || null, weight || null, gender || null, activityID || null, proteinGoalPerDay || null]
     );
 
-    res.status(201).json({ message: 'User created successfully', userId: result.insertId, role: 'User' });
+    logger.info(`User created successfully: ${username} (ID: ${result.insertId})`);
+    res.status(201).json({ message: 'Welcome to ProteinPal! Your account has been created.', userId: result.insertId, role: 'User' });
   } catch (err) {
-    console.error('Signup Error:', err);
-    res.status(500).json({ error: 'Database error during signup' });
+    logger.error('Signup Error:', err.message);
+    res.status(500).json({ error: 'Database error: Could not complete registration' });
   }
 };
 
+// ─── LOGIN ───────────────────────────────────────────────────────────────────
 exports.login = async (req, res) => {
-  try {
-    const { email, password } = req.body;
+  const { email, password } = req.body;
+  logger.info(`Login attempt: ${email}`);
 
+  try {
     if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password are required' });
+      return res.status(400).json({ error: 'Both email and password are required' });
     }
 
     const [users] = await db.query('SELECT * FROM user_final WHERE Email = ?', [email]);
     if (users.length === 0) {
-      return res.status(401).json({ error: 'Invalid email or password' });
+      logger.warn(`Login failed: No user found with email ${email}`);
+      return res.status(401).json({ error: 'Authentication failed: Invalid credentials' });
     }
 
     const user = users[0];
     const isMatch = await bcrypt.compare(password, user.PasswordHash);
     
     if (!isMatch) {
-      return res.status(401).json({ error: 'Invalid email or password' });
+      logger.warn(`Login failed: Incorrect password for ${email}`);
+      return res.status(401).json({ error: 'Authentication failed: Invalid credentials' });
     }
 
     const token = jwt.sign(
@@ -58,9 +67,10 @@ exports.login = async (req, res) => {
       { expiresIn: '24h' }
     );
 
-    res.json({ message: 'Login successful', token, userId: user.UserID, username: user.Username, role: user.Role });
+    logger.info(`Successful login: ${user.Username} [Role: ${user.Role}]`);
+    res.json({ message: 'Authenticated successfully', token, userId: user.UserID, username: user.Username, role: user.Role });
   } catch (err) {
-    console.error('Login Error:', err);
-    res.status(500).json({ error: 'Database error during login' });
+    logger.error('Login Error:', err.message);
+    res.status(500).json({ error: 'Database error: Could not process authentication' });
   }
 };
