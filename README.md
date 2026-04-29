@@ -1,3 +1,1 @@
-# Welcome to your Lovable project
-
-TODO: Document your project here
+The Protein Tracker DBMS Project aims to design and implement a database-driven system that helps users systematically record their food intake, calculate protein consumption, and analyze dietary patterns over time. By using a structured database approach, the system ensures reliable data storage, easy retrieval, and meaningful insights into users’ protein consumption habits.
